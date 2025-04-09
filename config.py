@@ -1,0 +1,11 @@
+INSTRUCTION_LIMIT = 4096
+CHAT_CONTEXT_LIMIT = 28672
+PROMPT_LIMIT = 2048
+RESPONSE_LIMIT = 4096
+MODEL_DIR = "/home/ksolomon/git/quant"
+SAFETENSORS_FILE = MODEL_DIR + "/model.safetensors"
+SESSION_CACHE_FILE = "session_cache.pt"
+INTERACTION_DIR = "./users/ksolomon/sessions"
+CUDA_DEVICE = "cuda:0"
+CHUNK_SIZE = 5
+INSTRUCTION_FILE = "instruction_context.txt"
