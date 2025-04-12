@@ -1,9 +1,11 @@
 accelerate
 asyncio
+authlib
 chromadb
 fastapi
 logging
 modelscope
+nginx
 pydantic
 python-jose
 python-multipart

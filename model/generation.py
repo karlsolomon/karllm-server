@@ -30,6 +30,15 @@ def generate_stream(prompt: str):
         prompt, add_bos=not ModelState.session_active, add_eos=True
     )
 
+    # Ensure embedding weights are on CUDA before moving input_ids
+    embedding = ModelState.model.modules[0].embedding
+    if embedding is not None and embedding.weight.device.type == "cpu":
+        embedding.to("cuda:0")  # or detect correct device from config
+        print(f"[debug] moved embedding to cuda:0")
+
+    # Now safely move input_ids
+    input_ids = input_ids.to("cuda:0")
+
     before_len = ModelState.cache.current_seq_len
     prompt_tokens = input_ids.shape[-1]
 

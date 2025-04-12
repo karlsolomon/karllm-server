@@ -1,11 +1,10 @@
 import os
 
+from config import GPU_SPLIT, MODEL_DIR, PROMPT_LIMIT, RESPONSE_LIMIT, TENSOR_PARALLEL
 from exllamav2 import ExLlamaV2Cache_Q8
 from exllamav2.generator import ExLlamaV2Sampler
 from exllamav2.generator.streaming import ExLlamaV2StreamingGenerator
 from exllamav2.model_init import init as model_init
-
-from config import MODEL_DIR, PROMPT_LIMIT, RESPONSE_LIMIT
 
 model = None
 tokenizer = None
@@ -33,8 +32,8 @@ def lazy_load_model():
         (),
         {
             "model_dir": MODEL_DIR,
-            "gpu_split": None,
-            "tensor_parallel": False,
+            "gpu_split": GPU_SPLIT,
+            "tensor_parallel": TENSOR_PARALLEL,
             "length": 4096,
             "rope_scale": None,
             "rope_alpha": None,

@@ -9,3 +9,5 @@ INTERACTION_DIR = "./users/ksolomon/sessions"
 CUDA_DEVICE = "cuda:0"
 CHUNK_SIZE = 5
 INSTRUCTION_FILE = "instruction_context.txt"
+TENSOR_PARALLEL = True
+GPU_SPLIT = "auto"
