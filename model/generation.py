@@ -2,13 +2,12 @@ import json
 import os
 import time
 
+import config
 import exllamav2
 import torch
 from exllamav2 import ExLlamaV2Cache_Q8, ExLlamaV2Cache_TP
-from safetensors.torch import save_file
-
-import config
 from model.init import ModelState
+from safetensors.torch import save_file
 
 
 def normalize_decoded(output):
@@ -42,14 +41,19 @@ def generate_stream(prompt: str):
     )
     job.stop_tokens.add(config.EOS_TOKEN_ID)
     ModelState.generator.enqueue(job)
-    eos = False
-    while not eos:
+    buffer = []
+    while ModelState.generator.num_remaining_jobs():
         results = ModelState.generator.iterate()
-        for result in results:
-            assert result["job"] == job
-            if result["stage"] == "streaming":
-                text = result.get("text", "")
-                yield f"data:{json.dumps({'text': text})}\n\n"
-                if result["eos"]:
-                    eos = True
-                    yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
+        if len(results) >= 1:
+            r = results[len(results) - 1]
+            if r["stage"] == "streaming":
+                buffer.append(r.get("text", ""))
+                if r["eos"] or (len(buffer) >= config.CHUNK_SIZE):
+                    yield f"data:{json.dumps({'text': "".join(buffer)})}\n\n"
+                    buffer = []
+            if r["eos"]:
+                yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
+                ttft = r["time_prefill"]
+                output_tokens = r["new_tokens"]
+                tps = output_tokens / (r["time_generate"] - ttft)
+                print(f"🕐 TPS: {tps:.3f} in {input_ids.shape[1]} out {output_tokens}")

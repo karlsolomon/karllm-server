@@ -1,7 +1,5 @@
 import os
 
-import exllamav2
-
 # from exllamav2.cache import ExLlamaV2Cache_TP
 # from exllamav2.embedding import ExLlamaV2Embedding
 # from exllamav2.generator import ExLlamaV2Sampler
@@ -9,6 +7,7 @@ import exllamav2
 # from exllamav2.model_init import init as model_init
 #
 import config
+import exllamav2
 
 
 class ModelState:
@@ -43,7 +42,6 @@ def load_model():
     if config.TENSOR_PARALLEL:
         ModelState.model.load_tp(
             progress=True,
-            gpu_split=config.GPU_SPLIT,
             expect_cache_tokens=config.CHAT_CONTEXT_LIMIT,
             expect_cache_base=config.CACHE_QUANTIZATION,
         )
@@ -60,7 +58,6 @@ def load_model():
     ModelState.settings.top_p = config.TOP_P
     ModelState.settings.token_repetition_penalty = config.TOKEN_REPETITION_PENALTY
     ModelState.settings.length = config.RESPONSE_LIMIT
-    # ModelState.settings.eos_token_id = config.EOS_TOKEN_ID
 
     ModelState.tokenizer = exllamav2.ExLlamaV2Tokenizer(ModelState.config)
 
