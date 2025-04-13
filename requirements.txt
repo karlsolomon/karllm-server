@@ -3,9 +3,9 @@ asyncio
 authlib
 chromadb
 fastapi
+flash-attn>=2.5.7
 logging
 modelscope
-nginx
 pydantic
 python-jose
 python-multipart

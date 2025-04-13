@@ -1,73 +1,75 @@
 import os
 
-from config import GPU_SPLIT, MODEL_DIR, PROMPT_LIMIT, RESPONSE_LIMIT, TENSOR_PARALLEL
-from exllamav2 import ExLlamaV2Cache_Q8
-from exllamav2.generator import ExLlamaV2Sampler
-from exllamav2.generator.streaming import ExLlamaV2StreamingGenerator
-from exllamav2.model_init import init as model_init
+import exllamav2
 
-model = None
-tokenizer = None
-generator = None
-settings = None
-cache = None
+# from exllamav2.cache import ExLlamaV2Cache_TP
+# from exllamav2.embedding import ExLlamaV2Embedding
+# from exllamav2.generator import ExLlamaV2Sampler
+# from exllamav2.generator.streaming import ExLlamaV2StreamingGenerator
+# from exllamav2.model_init import init as model_init
+#
+import config
 
 
 class ModelState:
+    """
+    Container for global model state shared across API handlers.
+    Includes model components, cache, and session management.
+    """
+
     model = None
+    config = None
     tokenizer = None
     generator = None
     settings = None
     cache = None
     model_ready = False
-    # persistence
     session_ids = None
     session_active = False
 
 
-def lazy_load_model():
+def load_model():
+    """
+    Initialize and load the ExLlamaV2 model, tokenizer, cache, and generator.
+    """
     print("🔁 Loading model...")
-    args = type(
-        "Args",
-        (),
-        {
-            "model_dir": MODEL_DIR,
-            "gpu_split": GPU_SPLIT,
-            "tensor_parallel": TENSOR_PARALLEL,
-            "length": 4096,
-            "rope_scale": None,
-            "rope_alpha": None,
-            "rope_yarn": None,
-            "no_flash_attn": False,
-            "no_xformers": False,
-            "no_sdpa": False,
-            "no_graphs": False,
-            "low_mem": False,
-            "experts_per_token": None,
-            "load_q4": False,
-            "load_q8": True,
-            "fast_safetensors": False,
-            "ignore_compatibility": True,
-            "chunk_size": PROMPT_LIMIT,
-        },
-    )()
 
-    ModelState.model, ModelState.tokenizer = model_init(
-        args, progress=True, max_input_len=PROMPT_LIMIT, max_output_len=RESPONSE_LIMIT
+    # Load model and tokenizer
+    ModelState.config = exllamav2.ExLlamaV2Config(model_dir=config.MODEL_DIR)
+
+    ModelState.model = exllamav2.ExLlamaV2(ModelState.config)
+
+    # Initialize KV cache
+    if config.TENSOR_PARALLEL:
+        ModelState.model.load_tp(
+            progress=True,
+            gpu_split=config.GPU_SPLIT,
+            expect_cache_tokens=config.CHAT_CONTEXT_LIMIT,
+            expect_cache_base=config.CACHE_QUANTIZATION,
+        )
+        ModelState.cache = exllamav2.ExLlamaV2Cache_TP(
+            model=ModelState.model, base=config.CACHE_QUANTIZATION
+        )
+    else:
+        ModelState.cache = exllamav2.config.CACHE_QUANTIZATION(ModelState.model)
+
+    # Configure sampling
+    ModelState.settings = exllamav2.generator.ExLlamaV2Sampler().Settings()
+    ModelState.settings.temperature = config.TEMPERATURE
+    ModelState.settings.top_k = config.TOP_K
+    ModelState.settings.top_p = config.TOP_P
+    ModelState.settings.token_repetition_penalty = config.TOKEN_REPETITION_PENALTY
+    ModelState.settings.length = config.RESPONSE_LIMIT
+    # ModelState.settings.eos_token_id = config.EOS_TOKEN_ID
+
+    ModelState.tokenizer = exllamav2.ExLlamaV2Tokenizer(ModelState.config)
+
+    # Build streaming generator
+    ModelState.generator = exllamav2.generator.ExLlamaV2DynamicGenerator(
+        model=ModelState.model, cache=ModelState.cache, tokenizer=ModelState.tokenizer
     )
 
-    ModelState.settings = ExLlamaV2Sampler().Settings()
-    ModelState.settings.temperature = 0.8
-    ModelState.settings.top_k = 50
-    ModelState.settings.top_p = 0.95
-    ModelState.settings.token_repetition_penalty = 1.1
-    ModelState.settings.eos_token_id = ModelState.tokenizer.eos_token_id or 151643
+    ModelState.generator.warmup()
 
-    ModelState.cache = ExLlamaV2Cache_Q8(
-        ModelState.model, lazy=not ModelState.model.loaded
-    )
-    ModelState.generator = ExLlamaV2StreamingGenerator(
-        ModelState.model, ModelState.cache, ModelState.tokenizer
-    )
     print("✅ Model fully loaded.")
     ModelState.model_ready = True

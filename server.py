@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 
-from model.init import lazy_load_model
+import model
 from routes.chat import chat_router
 
 app = FastAPI()
@@ -10,7 +10,7 @@ app.include_router(chat_router)
 
 @app.on_event("startup")
 async def startup_event():
-    lazy_load_model()
+    model.init.load_model()
 
 
 if __name__ == "__main__":
