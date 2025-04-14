@@ -9,6 +9,17 @@ from exllamav2 import ExLlamaV2Cache_Q8, ExLlamaV2Cache_TP
 from model.init import ModelState
 from safetensors.torch import save_file
 
+buffer = []
+ModelState.session_id = 0
+
+
+def start_stream():
+    ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+    ModelState.generator.begin_stream_ex(ModelState.session_ids, ModelState.settings)
+    ModelState.session_active = True
+
+    # TODO: parse session list in server/users/uname/sessions/ and increment session ID
+
 
 def normalize_decoded(output):
     """
@@ -18,46 +29,46 @@ def normalize_decoded(output):
     return "".join(output) if isinstance(output, list) else output
 
 
-def generate_stream(prompt: str):
-    """
-    Stream token-by-token output from the model given an input prompt.
-    Yields JSON-encoded SSE (Server-Sent Events) chunks suitable for FastAPI StreamingResponse.
-
-    Also captures prompt/response token IDs and saves session metadata to .safetensors.
-    """
-    if not ModelState.model_ready:
-        raise RuntimeError("Model not loaded")
-
+def continue_prompt(prompt: str):
     # Send Job
+    all_token_ids = []
+    before_len = ModelState.cache.current_seq_len
     input_ids = ModelState.tokenizer.encode(
         prompt, add_bos=not ModelState.session_active, add_eos=True
     )
-    buffer = []
-    ModelState.session_ids = torch.cat([ModelState.session_ids, input_ids], dim=-1)
+    ModelState.generator._gen_feed_tokens(input_ids, ModelState.settings)
+    while True:
+        result = ModelState.generator.stream_ex()
+        chunk_ids = result.get("chunk_token_ids", None)
 
-    job = exllamav2.generator.ExLlamaV2DynamicJob(
-        input_ids=ModelState.session_ids,
-        max_new_tokens=config.RESPONSE_LIMIT,
-        gen_settings=ModelState.settings,
-        filter_prefer_eos=True,
-    )
-    job.stop_tokens.add(config.EOS_TOKEN_ID)
-    ModelState.generator.enqueue(job)
-
-    ModelState.session_active = True
-
-    while ModelState.generator.num_remaining_jobs():
-        results = ModelState.generator.iterate()
-        if len(results) >= 1:
-            r = results[len(results) - 1]
-            if r["stage"] == "streaming":
-                buffer.append(r.get("text", ""))
-                if r["eos"] or (len(buffer) >= config.CHUNK_SIZE):
-                    yield f"data:{json.dumps({'text': "".join(buffer)})}\n\n"
+        eos = result.get("eos", False)
+        if chunk_ids is not None and chunk_ids.numel() > 0:
+            new_ids = chunk_ids[0].tolist()
+            all_token_ids.extend(new_ids)
+            for token in new_ids:
+                buffer.append(token)
+                if len(buffer) >= config.CHUNK_SIZE:
+                    decoded = ModelState.tokenizer.decode(
+                        torch.tensor(buffer).unsqueeze(0)
+                    )
+                    yield f"data:{json.dumps({'text': decoded})}\n\n"
                     buffer.clear()
-            if r["eos"]:
-                yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
-                ttft = r["time_prefill"]
-                output_tokens = r["new_tokens"]
-                tps = output_tokens / (r["time_generate"] - ttft)
-                print(f"🕐 TPS: {tps:.3f} in {input_ids.shape[1]} out {output_tokens}")
+        if eos:
+            break
+    if buffer:
+        final_decoded = ModelState.tokenizer.decode(torch.tensor(buffer).unsqueeze(0))
+        buffer.clear()
+        yield f"data:{json.dumps({'text': final_decoded})}\n\n"
+    yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
+
+    if ModelState.save_interactions:
+        # Save interaction snapshot
+        f = f"interaction_{int(time.time())}.safetensors"
+        after_len = ModelState.cache.current_seq_len
+        data = {
+            "prompt_ids": input_ids.cpu(),
+            "response_ids": torch.tensor(all_token_ids).cpu(),
+            "start_offset": torch.tensor([before_len]),
+            "end_offset": torch.tensor([after_len]),
+        }
+        save_file(data, os.path.join(ModelState.session_dir, f))

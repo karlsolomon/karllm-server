@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import config
 import yaml
 from authlib.jose import JsonWebKey, jwt
 from authlib.jose.errors import JoseError
@@ -11,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Constants
 ALGORITHM = "EdDSA"
-SESSION_TIMEOUT = timedelta(minutes=2)
+SESSION_TIMEOUT = timedelta(seconds=(config.SERVER_TIMEOUT_MINUTES * 60))
 auth_scheme = HTTPBearer()
 
 # In-memory session map: session_id -> {username, last_seen}
@@ -78,6 +79,8 @@ def verify_jwt_and_create_session(
     Returns:
         dict: { session_id, username }
     """
+
+    # TODO: Fail if existing session is active. Decrease KeepAlive/SessionTimeout
     token = credentials.credentials
 
     for username, pem in PUBLIC_KEYS.items():

@@ -33,6 +33,8 @@ class ModelState:
     model_ready = False
     session_active = False
     session_ids = None
+    session_dir = None
+    save_interactions = False
 
 
 def load_model():
@@ -73,8 +75,8 @@ def load_model():
 
     ModelState.tokenizer = exllamav2.ExLlamaV2Tokenizer(ModelState.config)
 
-    # Dynamic generator
-    ModelState.generator = exllamav2.generator.ExLlamaV2DynamicGenerator(
+    # Streaming generator
+    ModelState.generator = exllamav2.generator.ExLlamaV2StreamingGenerator(
         model=ModelState.model,
         cache=ModelState.cache,
         tokenizer=ModelState.tokenizer,
