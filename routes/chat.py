@@ -1,9 +1,8 @@
 from datetime import datetime
 
+from auth import ACTIVE_SESSIONS, require_session, verify_jwt_and_create_session
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
-
-from auth import ACTIVE_SESSIONS, require_session, verify_jwt_and_create_session
 from model.generation import generate_stream
 from model.init import ModelState
 from schema import ChatRequest
@@ -36,6 +35,13 @@ async def stream_chat(request: ChatRequest, session=Depends(require_session)):
     return StreamingResponse(
         generate_stream(request.prompt), media_type="text/event-stream"
     )
+
+
+@chat_router.post("/clear")
+async def clear(session=Depends(require_session)):
+    """Reset model cache and clear contexts."""
+    ModelState.generator.reset_page_table()
+    return JSONResponse(content={"message": "Context cleared."})
 
 
 @chat_router.post("/clearall")

@@ -1,6 +1,7 @@
 from exllamav2 import ExLlamaV2Cache_Q8
 
 # Configuration constants for LLM model behavior and server operation
+DYNAMIC_GENERATOR = False
 
 INSTRUCTION_LIMIT = 4096  # Max tokens allowed in the instruction context
 CHAT_CONTEXT_LIMIT = 28672  # Max total tokens in context window (instruction + chat)
@@ -13,10 +14,10 @@ SAFETENSORS_FILE = MODEL_DIR + "/model.safetensors"  # Path to main model weight
 SESSION_CACHE_FILE = "session_cache.pt"  # Path for saving/restoring KV cache
 INTERACTION_DIR = "./users/ksolomon/sessions"  # Path for saving interaction traces
 
-CHUNK_SIZE = 6  # Streaming chunk size (tokens per SSE flush)
+CHUNK_SIZE = 4  # Streaming chunk size (tokens per SSE flush)
 
 TENSOR_PARALLEL = True  # Enable multi-GPU model sharding
-NO_GRAPHS = TENSOR_PARALLEL  # Disable CUDA Graphs when using TP
+NO_GRAPHS = False
 NO_FLASH_ATTN = False
 GPU_SPLIT = "auto"  # Auto-assign memory split across devices
 

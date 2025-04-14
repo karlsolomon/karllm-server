@@ -25,23 +25,27 @@ def generate_stream(prompt: str):
 
     Also captures prompt/response token IDs and saves session metadata to .safetensors.
     """
-    start = time.time()
-    text = None
-
     if not ModelState.model_ready:
         raise RuntimeError("Model not loaded")
 
     # Send Job
-    input_ids = ModelState.tokenizer.encode(prompt, add_bos=True, add_eos=True)
+    input_ids = ModelState.tokenizer.encode(
+        prompt, add_bos=not ModelState.session_active, add_eos=True
+    )
+    buffer = []
+    ModelState.session_ids = torch.cat([ModelState.session_ids, input_ids], dim=-1)
+
     job = exllamav2.generator.ExLlamaV2DynamicJob(
-        input_ids=input_ids,
+        input_ids=ModelState.session_ids,
         max_new_tokens=config.RESPONSE_LIMIT,
         gen_settings=ModelState.settings,
         filter_prefer_eos=True,
     )
     job.stop_tokens.add(config.EOS_TOKEN_ID)
     ModelState.generator.enqueue(job)
-    buffer = []
+
+    ModelState.session_active = True
+
     while ModelState.generator.num_remaining_jobs():
         results = ModelState.generator.iterate()
         if len(results) >= 1:
@@ -50,7 +54,7 @@ def generate_stream(prompt: str):
                 buffer.append(r.get("text", ""))
                 if r["eos"] or (len(buffer) >= config.CHUNK_SIZE):
                     yield f"data:{json.dumps({'text': "".join(buffer)})}\n\n"
-                    buffer = []
+                    buffer.clear()
             if r["eos"]:
                 yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
                 ttft = r["time_prefill"]
