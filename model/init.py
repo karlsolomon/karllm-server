@@ -1,73 +1,129 @@
 import os
+from pathlib import Path
 
-from config import GPU_SPLIT, MODEL_DIR, PROMPT_LIMIT, RESPONSE_LIMIT, TENSOR_PARALLEL
-from exllamav2 import ExLlamaV2Cache_Q8
-from exllamav2.generator import ExLlamaV2Sampler
-from exllamav2.generator.streaming import ExLlamaV2StreamingGenerator
-from exllamav2.model_init import init as model_init
-
-model = None
-tokenizer = None
-generator = None
-settings = None
-cache = None
+import config
+import exllamav2
+import torch
+from safetensors.torch import load_file
 
 
 class ModelState:
+    """
+    Container for global model state shared across API handlers.
+    Includes model components, cache, and session management.
+    """
+
     model = None
+    config = None
     tokenizer = None
     generator = None
     settings = None
     cache = None
     model_ready = False
-    # persistence
-    session_ids = None
     session_active = False
+    session_ids = None
+    session_dir = None
+    save_interactions = False
 
 
-def lazy_load_model():
+def load_session_into_cache(session_dir: str):
+    """
+    Reconstruct full KV cache from interaction snapshots in a session directory.
+    Each file must contain prompt_ids, response_ids, start_offset, end_offset.
+    """
+
+    session_path = Path(session_dir)
+    if not session_path.exists():
+        raise FileNotFoundError(f"Session directory not found: {session_dir}")
+
+    files = sorted(
+        session_path.glob("*.safetensors"),
+        key=lambda f: (
+            int(f.stem.split("_")[-1]) if "_" in f.stem else f.stat().st_mtime
+        ),
+    )
+
+    for fpath in files:
+        data = load_file(fpath)
+        if "prompt_ids" not in data or "response_ids" not in data:
+            continue  # Not an interaction file
+
+        prompt_ids = data["prompt_ids"]
+        # response_ids = data["response_ids"]
+
+        # prompt_ids = data["prompt_ids"]
+        # if prompt_ids.ndim == 1:
+        #     prompt_ids = prompt_ids.unsqueeze(0)
+        #
+        # response_ids = data["response_ids"]
+        # if response_ids.ndim == 1:
+        #     response_ids = response_ids.unsqueeze(0)
+        #
+        # Rebuild token stream (prompt + response)
+        # full_ids = torch.cat([prompt_ids, response_ids], dim=-1)
+        # if full_ids.ndim == 1:
+        #     full_ids = full_ids.unsqueeze(0)  # [1, seq_len]
+
+        # Pre-fill cache with prompt + response to reach final state
+        ModelState.model.forward(
+            input_ids=prompt_ids, cache=ModelState.cache, preprocess_only=True
+        )
+
+    print(
+        f"✅ Loaded {len(files)} interactions into KV cache. Current seq_len: {ModelState.cache.current_seq_len}"
+    )
+
+
+def load_model():
+    """
+    Initialize and load the ExLlamaV2 model, tokenizer, cache, and generator.
+    """
     print("🔁 Loading model...")
-    args = type(
-        "Args",
-        (),
-        {
-            "model_dir": MODEL_DIR,
-            "gpu_split": GPU_SPLIT,
-            "tensor_parallel": TENSOR_PARALLEL,
-            "length": 4096,
-            "rope_scale": None,
-            "rope_alpha": None,
-            "rope_yarn": None,
-            "no_flash_attn": False,
-            "no_xformers": False,
-            "no_sdpa": False,
-            "no_graphs": False,
-            "low_mem": False,
-            "experts_per_token": None,
-            "load_q4": False,
-            "load_q8": True,
-            "fast_safetensors": False,
-            "ignore_compatibility": True,
-            "chunk_size": PROMPT_LIMIT,
-        },
-    )()
 
-    ModelState.model, ModelState.tokenizer = model_init(
-        args, progress=True, max_input_len=PROMPT_LIMIT, max_output_len=RESPONSE_LIMIT
+    # Load model and tokenizer
+    ModelState.config = exllamav2.ExLlamaV2Config(model_dir=config.MODEL_DIR)
+    ModelState.config.max_seq_len = config.MODEL_MAX_SEQ_LEN
+    ModelState.config.max_batch_size = 4
+    ModelState.config.max_output_len = config.RESPONSE_LIMIT
+    ModelState.config.max_input_len = config.PROMPT_LIMIT
+
+    ModelState.model = exllamav2.ExLlamaV2(ModelState.config)
+
+    # Initialize KV cache
+    if config.TENSOR_PARALLEL:
+        ModelState.model.load_tp(
+            progress=True,
+            expect_cache_tokens=config.CHAT_CONTEXT_LIMIT,
+            expect_cache_base=config.CACHE_QUANTIZATION,
+        )
+        ModelState.cache = exllamav2.ExLlamaV2Cache_TP(
+            model=ModelState.model, base=config.CACHE_QUANTIZATION
+        )
+    else:
+        ModelState.cache = config.CACHE_QUANTIZATION(ModelState.model)
+
+    # Configure sampling
+    ModelState.settings = exllamav2.generator.ExLlamaV2Sampler().Settings()
+    ModelState.settings.temperature = config.TEMPERATURE
+    ModelState.settings.top_k = config.TOP_K
+    ModelState.settings.top_p = config.TOP_P
+    ModelState.settings.token_repetition_penalty = config.TOKEN_REPETITION_PENALTY
+    ModelState.settings.length = config.RESPONSE_LIMIT
+
+    ModelState.tokenizer = exllamav2.ExLlamaV2Tokenizer(ModelState.config)
+    ModelState.settings.eos_token_id = int(
+        ModelState.tokenizer.eos_token_id or config.EOS_TOKEN_ID
     )
 
-    ModelState.settings = ExLlamaV2Sampler().Settings()
-    ModelState.settings.temperature = 0.8
-    ModelState.settings.top_k = 50
-    ModelState.settings.top_p = 0.95
-    ModelState.settings.token_repetition_penalty = 1.1
-    ModelState.settings.eos_token_id = ModelState.tokenizer.eos_token_id or 151643
+    # Streaming generator
+    ModelState.generator = exllamav2.generator.ExLlamaV2StreamingGenerator(
+        model=ModelState.model,
+        cache=ModelState.cache,
+        tokenizer=ModelState.tokenizer,
+    )
+    ModelState.generator.warmup()
 
-    ModelState.cache = ExLlamaV2Cache_Q8(
-        ModelState.model, lazy=not ModelState.model.loaded
-    )
-    ModelState.generator = ExLlamaV2StreamingGenerator(
-        ModelState.model, ModelState.cache, ModelState.tokenizer
-    )
+    ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+
     print("✅ Model fully loaded.")
     ModelState.model_ready = True

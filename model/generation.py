@@ -2,91 +2,82 @@ import json
 import os
 import time
 
+import config
+import exllamav2
 import torch
+from exllamav2 import ExLlamaV2Cache_Q8, ExLlamaV2Cache_TP
+from model.init import ModelState
 from safetensors.torch import save_file
 
-from config import CHUNK_SIZE, INTERACTION_DIR
-from model.init import ModelState
+buffer = []
+ModelState.session_id = 0
+
+
+def start_stream():
+    # ModelState.cache.reset() # TODO: investigate why this causes model to talk to itself.
+    # ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+    ModelState.generator.begin_stream_ex(ModelState.session_ids, ModelState.settings)
+    ModelState.session_active = True
 
 
 def normalize_decoded(output):
+    """
+    Normalize decoded output from model generator.
+    Handles both string and list-of-strings formats.
+    """
     return "".join(output) if isinstance(output, list) else output
 
 
-def generate_stream(prompt: str):
-    start = time.time()
-    tokens = 0
-    buffer = []
+def continue_prompt(prompt: str):
+    # Send Job
     all_token_ids = []
-
-    if not ModelState.model_ready:
-        raise RuntimeError("Model not loaded")
-
-    tokenizer = ModelState.tokenizer
-    generator = ModelState.generator
-    settings = ModelState.settings
-
-    input_ids = tokenizer.encode(
+    before_len = ModelState.cache.current_seq_len
+    input_ids = ModelState.tokenizer.encode(
         prompt, add_bos=not ModelState.session_active, add_eos=True
     )
-
-    # Ensure embedding weights are on CUDA before moving input_ids
-    embedding = ModelState.model.modules[0].embedding
-    if embedding is not None and embedding.weight.device.type == "cpu":
-        embedding.to("cuda:0")  # or detect correct device from config
-        print(f"[debug] moved embedding to cuda:0")
-
-    # Now safely move input_ids
-    input_ids = input_ids.to("cuda:0")
-
-    before_len = ModelState.cache.current_seq_len
-    prompt_tokens = input_ids.shape[-1]
-
-    if not ModelState.session_active:
-        generator.begin_stream_ex(input_ids, settings)
-        ModelState.session_ids = input_ids.clone()
-        ModelState.session_active = True
-    else:
-        ModelState.session_ids = torch.cat((ModelState.session_ids, input_ids), dim=-1)
-        generator._gen_feed_tokens(input_ids, settings)
-
+    ModelState.generator._gen_feed_tokens(input_ids, ModelState.settings)
     while True:
-        result = generator.stream_ex()
+        result = ModelState.generator.stream_ex()
         chunk_ids = result.get("chunk_token_ids", None)
-        eos = result.get("eos", False)
 
+        eos = result.get("eos", False)
         if chunk_ids is not None and chunk_ids.numel() > 0:
             new_ids = chunk_ids[0].tolist()
             all_token_ids.extend(new_ids)
 
+            # ⛔ Stop if EOS is in output
+            if (
+                (ModelState.tokenizer.eos_token_id in new_ids)
+                or (config.EOS_TOKEN_ID in new_ids)
+                or (config.EOS_TOKEN_ID_BACKUP in new_ids)
+            ):
+                print("✅ Detected EOS token in output — stopping early.")
+                eos = True
+
             for token in new_ids:
                 buffer.append(token)
-                tokens += 1
-                if len(buffer) >= CHUNK_SIZE:
-                    decoded = tokenizer.decode(torch.tensor(buffer).unsqueeze(0))
+                if len(buffer) >= config.CHUNK_SIZE:
+                    decoded = ModelState.tokenizer.decode(
+                        torch.tensor(buffer).unsqueeze(0)
+                    )
                     yield f"data:{json.dumps({'text': decoded})}\n\n"
                     buffer.clear()
-
         if eos:
             break
-
     if buffer:
-        final_decoded = tokenizer.decode(torch.tensor(buffer).unsqueeze(0))
+        final_decoded = ModelState.tokenizer.decode(torch.tensor(buffer).unsqueeze(0))
+        buffer.clear()
         yield f"data:{json.dumps({'text': final_decoded})}\n\n"
-
     yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
 
-    after_len = ModelState.cache.current_seq_len
-    print(
-        f"[Server] Prompt tokens: {prompt_tokens}, Response tokens: {tokens}, KV delta: {after_len - before_len}"
-    )
-
-    # Save interaction snapshot
-    filename = f"interaction_{int(time.time())}.safetensors"
-    data = {
-        "prompt_ids": input_ids.cpu(),
-        "response_ids": torch.tensor(all_token_ids).cpu(),
-        "start_offset": torch.tensor([before_len]),
-        "end_offset": torch.tensor([after_len]),
-    }
-    save_file(data, os.path.join(INTERACTION_DIR, filename))
+    if ModelState.save_interactions:
+        # Save interaction snapshot
+        f = f"{int(time.time())}.safetensors"
+        after_len = ModelState.cache.current_seq_len
+        data = {
+            "prompt_ids": input_ids.cpu(),
+            "response_ids": torch.tensor(all_token_ids).cpu(),
+            "start_offset": torch.tensor([before_len]),
+            "end_offset": torch.tensor([after_len]),
+        }
+        save_file(data, os.path.join(ModelState.session_dir, f))

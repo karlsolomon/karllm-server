@@ -9,20 +9,32 @@ from authlib.jose.errors import JoseError
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+import config
+
 # Constants
 ALGORITHM = "EdDSA"
-SESSION_TIMEOUT = timedelta(minutes=2)
+SESSION_TIMEOUT = timedelta(seconds=(config.SERVER_TIMEOUT_MINUTES * 60))
 auth_scheme = HTTPBearer()
-ACTIVE_SESSIONS = {}  # session_id -> {"username": str, "last_seen": datetime}
+
+# In-memory session map: session_id -> {username, last_seen}
+ACTIVE_SESSIONS = {}
 
 
-# Load JWT signing/verification key algorithm
 def get_config_dir():
+    """Return the base config directory for auth key and server configs."""
     return Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser() / "karllm"
 
 
-# Load trusted public keys from YAML config + separate PEM files
 def load_public_keys():
+    """
+    Load trusted public signing keys from disk based on server.conf.
+
+    Raises:
+        RuntimeError if any file is missing or PEM formatting is invalid.
+
+    Returns:
+        dict[str, str]: username -> PEM public key
+    """
     config_dir = get_config_dir()
     conf_path = config_dir / "server.conf"
     keys_dir = config_dir / "keys"
@@ -46,43 +58,56 @@ def load_public_keys():
                 f"Key for user '{username}' is not PEM format: {key_path}"
             )
         keys[username] = pem
+
     return keys
 
 
-# Load trusted PEM-formatted public keys from disk
+# Load trusted PEM-formatted public keys from disk once at startup
 PUBLIC_KEYS = load_public_keys()
 
+from fastapi.responses import JSONResponse  # Add at the top if not already
 
-# Decode + verify JWT, create a temporary session
+
 def verify_jwt_and_create_session(
     credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
 ):
     token = credentials.credentials
 
-    try:
-        # Try each trusted public key until one successfully verifies
-        for username, pem in PUBLIC_KEYS.items():
-            try:
-                jwk = JsonWebKey.import_key(pem, {"kty": "OKP"})
-                claims = jwt.decode(token, key=jwk)
-                claims.validate()
-                # If validation passes, we found the correct user
-                session_id = str(uuid.uuid4())
-                ACTIVE_SESSIONS[session_id] = {
-                    "username": username,
-                    "last_seen": datetime.now(timezone.utc),
-                }
-                return {"session_id": session_id, "username": username}
-            except JoseError:
-                continue
+    for username, pem in PUBLIC_KEYS.items():
+        try:
+            print(f"🔍 Trying key for {username}")
+            jwk = JsonWebKey.import_key(pem, {"kty": "OKP"})
+            claims = jwt.decode(token, key=jwk)
+            claims.validate()
 
-        raise HTTPException(status_code=401, detail="No matching key for token")
+            session_id = str(uuid.uuid4())
+            ACTIVE_SESSIONS[session_id] = {
+                "username": username,
+                "last_seen": datetime.now(timezone.utc),
+            }
+            print(f"✅ JWT validated for {username}")
+            return {"session_id": session_id, "username": username}
 
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"JWT validation failed: {str(e)}")
+        except Exception as e:
+            print(f"❌ Key for {username} failed: {e}")
+            continue
+
+    print("❌ No matching key could validate the token.")
+    raise HTTPException(status_code=401, detail="No matching key for token")
 
 
 def require_session(request: Request):
+    """
+    Validate presence of a session token in the request headers.
+
+    Checks for expiration and removes inactive sessions.
+
+    Raises:
+        HTTPException 401 for missing, invalid, or expired session.
+
+    Returns:
+        dict: The valid session object from ACTIVE_SESSIONS
+    """
     session_id = request.headers.get("X-Session-Token")
     if not session_id:
         raise HTTPException(status_code=401, detail="Missing session token")
@@ -93,8 +118,6 @@ def require_session(request: Request):
 
     now = datetime.now(timezone.utc)
     last_seen = session["last_seen"]
-
-    # Fix: ensure last_seen is timezone-aware
     if last_seen.tzinfo is None:
         last_seen = last_seen.replace(tzinfo=timezone.utc)
 
