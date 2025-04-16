@@ -3,12 +3,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import config
 import yaml
 from authlib.jose import JsonWebKey, jwt
 from authlib.jose.errors import JoseError
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+import config
 
 # Constants
 ALGORITHM = "EdDSA"
@@ -64,27 +65,17 @@ def load_public_keys():
 # Load trusted PEM-formatted public keys from disk once at startup
 PUBLIC_KEYS = load_public_keys()
 
+from fastapi.responses import JSONResponse  # Add at the top if not already
+
 
 def verify_jwt_and_create_session(
     credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
 ):
-    """
-    Decode and verify a JWT token using one of the trusted public keys.
-
-    If valid, issue a new session_id and associate it with the username.
-
-    Raises:
-        HTTPException 401 if no matching key or validation fails.
-
-    Returns:
-        dict: { session_id, username }
-    """
-
-    # TODO: Fail if existing session is active. Decrease KeepAlive/SessionTimeout
     token = credentials.credentials
 
     for username, pem in PUBLIC_KEYS.items():
         try:
+            print(f"🔍 Trying key for {username}")
             jwk = JsonWebKey.import_key(pem, {"kty": "OKP"})
             claims = jwt.decode(token, key=jwk)
             claims.validate()
@@ -94,11 +85,14 @@ def verify_jwt_and_create_session(
                 "username": username,
                 "last_seen": datetime.now(timezone.utc),
             }
+            print(f"✅ JWT validated for {username}")
             return {"session_id": session_id, "username": username}
 
-        except JoseError:
+        except Exception as e:
+            print(f"❌ Key for {username} failed: {e}")
             continue
 
+    print("❌ No matching key could validate the token.")
     raise HTTPException(status_code=401, detail="No matching key for token")
 
 

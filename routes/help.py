@@ -52,9 +52,9 @@ HELP_METADATA = [
         "description": "List saved session folders for the user",
     },
     {
-        "path": "/convo/load/{name}",
+        "path": "/convo/switch/{name}",
         "method": "POST",
-        "description": "Restore a specific conversation session by name",
+        "description": "Switch to a different conversation session by name",
     },
     {
         "path": "/convo/delete/{name}",

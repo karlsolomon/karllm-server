@@ -4,7 +4,8 @@ from pathlib import Path
 from auth import require_session
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from model.init import ModelState
+from model.generation import start_stream
+from model.init import ModelState, load_session_into_cache
 
 router = APIRouter(prefix="/convo")
 
@@ -67,9 +68,8 @@ async def list_conversations(session=Depends(require_session)):
     )
 
 
-@router.post("/load/{name}")
+@router.post("/switch/{name}")
 async def load_conversation(name: str, session=Depends(require_session)):
-    """Set an old session directory as the current active one."""
     username = session["username"]
     target_dir = Path("users") / username / "sessions" / name
 
@@ -81,8 +81,10 @@ async def load_conversation(name: str, session=Depends(require_session)):
             },
         )
 
+    start_stream()
     ModelState.session_dir = target_dir
-    # TODO: clear cache and load in old cache
+    load_session_into_cache(target_dir)
+
     return JSONResponse(
         content={"message": f"Session '{name}' loaded for user '{username}'."}
     )

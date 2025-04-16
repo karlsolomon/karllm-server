@@ -3,7 +3,7 @@ from pathlib import Path
 
 import config
 from auth import ACTIVE_SESSIONS, require_session, verify_jwt_and_create_session
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from model.generation import start_stream
 from model.init import ModelState
@@ -13,6 +13,13 @@ router = APIRouter()
 
 @router.post("/connect")
 async def connect(request: Request, session=Depends(verify_jwt_and_create_session)):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError("Invalid or empty body")
+    except Exception as e:
+        print(f"❌ Failed to parse request body: {e}")
+        raise HTTPException(status_code=400, detail="Missing or malformed JSON body")
     username = session["username"]
     body = await request.json()
     save_interactions = body.get("saveInteractions", False)

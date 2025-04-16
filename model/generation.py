@@ -14,11 +14,10 @@ ModelState.session_id = 0
 
 
 def start_stream():
-    ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+    # ModelState.cache.reset() # TODO: investigate why this causes model to talk to itself.
+    # ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
     ModelState.generator.begin_stream_ex(ModelState.session_ids, ModelState.settings)
     ModelState.session_active = True
-
-    # TODO: parse session list in server/users/uname/sessions/ and increment session ID
 
 
 def normalize_decoded(output):
@@ -45,6 +44,16 @@ def continue_prompt(prompt: str):
         if chunk_ids is not None and chunk_ids.numel() > 0:
             new_ids = chunk_ids[0].tolist()
             all_token_ids.extend(new_ids)
+
+            # ⛔ Stop if EOS is in output
+            if (
+                (ModelState.tokenizer.eos_token_id in new_ids)
+                or (config.EOS_TOKEN_ID in new_ids)
+                or (config.EOS_TOKEN_ID_BACKUP in new_ids)
+            ):
+                print("✅ Detected EOS token in output — stopping early.")
+                eos = True
+
             for token in new_ids:
                 buffer.append(token)
                 if len(buffer) >= config.CHUNK_SIZE:
@@ -63,7 +72,7 @@ def continue_prompt(prompt: str):
 
     if ModelState.save_interactions:
         # Save interaction snapshot
-        f = f"interaction_{int(time.time())}.safetensors"
+        f = f"{int(time.time())}.safetensors"
         after_len = ModelState.cache.current_seq_len
         data = {
             "prompt_ids": input_ids.cpu(),
