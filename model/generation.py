@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 
 import config
 import exllamav2
@@ -18,6 +19,26 @@ def start_stream():
     # ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
     ModelState.generator.begin_stream_ex(ModelState.session_ids, ModelState.settings)
     ModelState.session_active = True
+
+
+def encode_file(path: Path):
+    text = path.read_text(encoding="utf-8")
+
+    all_ids = ModelState.tokenizer.encode(text, add_bos=False, add_eos=False)
+    if all_ids.ndim == 1:
+        all_ids = all_ids.unsqueeze(0)
+
+    chunk_size = 16 * 1024
+    injected_tokens = 0
+
+    for i in range(0, all_ids.shape[1], chunk_size):
+        chunk = all_ids[:, i : i + chunk_size]
+        ModelState.model.forward(
+            input_ids=chunk, cache=ModelState.cache, preprocess_only=True
+        )
+        injected_tokens += chunk.shape[1]
+
+    return injected_tokens
 
 
 def normalize_decoded(output):

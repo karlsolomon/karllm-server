@@ -5,7 +5,7 @@ INSTRUCTION_LIMIT = 4096  # Max tokens allowed in the instruction context
 CHAT_CONTEXT_LIMIT = 28672  # Max total tokens in context window (instruction + chat)
 PROMPT_LIMIT = 2048  # Max input prompt tokens per interaction
 RESPONSE_LIMIT = 4096  # Max output tokens generated per interaction
-MODEL_MAX_SEQ_LEN = 32768
+MODEL_MAX_SEQ_LEN = 1 * 32768
 
 MODEL_DIR = "/home/ksolomon/git/quant"  # Path to quantized model directory
 SAFETENSORS_FILE = MODEL_DIR + "/model.safetensors"  # Path to main model weights
