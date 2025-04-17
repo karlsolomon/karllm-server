@@ -1,10 +1,14 @@
+import json
 import os
 from pathlib import Path
 
-import config
 import exllamav2
 import torch
+from exllamav2.model_init import init as model_init
 from safetensors.torch import load_file
+
+import config
+import model.SupportedModel as sm
 
 
 class ModelState:
@@ -81,11 +85,12 @@ def load_model():
     print("🔁 Loading model...")
 
     # Load model and tokenizer
-    ModelState.config = exllamav2.ExLlamaV2Config(model_dir=config.MODEL_DIR)
-    ModelState.config.max_seq_len = config.MODEL_MAX_SEQ_LEN
+    activeModel = sm.get_active_model()
+    ModelState.config = exllamav2.ExLlamaV2Config(model_dir=activeModel.path)
+    ModelState.config.max_seq_len = activeModel.max_seq_len
     ModelState.config.max_batch_size = 4
-    ModelState.config.max_output_len = config.RESPONSE_LIMIT
-    ModelState.config.max_input_len = config.PROMPT_LIMIT
+    ModelState.config.max_output_len = activeModel.response_limit
+    ModelState.config.max_input_len = activeModel.prompt_limit
 
     ModelState.model = exllamav2.ExLlamaV2(ModelState.config)
 
@@ -93,14 +98,16 @@ def load_model():
     if config.TENSOR_PARALLEL:
         ModelState.model.load_tp(
             progress=True,
-            expect_cache_tokens=config.CHAT_CONTEXT_LIMIT,
+            expect_cache_tokens=activeModel.max_seq_len,
             expect_cache_base=config.CACHE_QUANTIZATION,
         )
         ModelState.cache = exllamav2.ExLlamaV2Cache_TP(
             model=ModelState.model, base=config.CACHE_QUANTIZATION
         )
     else:
+        ModelState.model = exllamav2.ExLlamaV2(ModelState.config)
         ModelState.cache = config.CACHE_QUANTIZATION(ModelState.model)
+        ModelState.model.load_autosplit(ModelState.cache, progress=True)
 
     # Configure sampling
     ModelState.settings = exllamav2.generator.ExLlamaV2Sampler().Settings()
@@ -121,7 +128,7 @@ def load_model():
         cache=ModelState.cache,
         tokenizer=ModelState.tokenizer,
     )
-    ModelState.generator.warmup()
+    # ModelState.generator.warmup()
 
     ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
 

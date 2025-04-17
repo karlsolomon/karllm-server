@@ -1,17 +1,19 @@
-from exllamav2 import ExLlamaV2Cache_Q8
+from exllamav2 import ExLlamaV2Cache, ExLlamaV2Cache_Q4, ExLlamaV2Cache_Q8
 
-# Configuration constants for LLM model behavior and server operation
-INSTRUCTION_LIMIT = 4096  # Max tokens allowed in the instruction context
-CHAT_CONTEXT_LIMIT = 28672  # Max total tokens in context window (instruction + chat)
-PROMPT_LIMIT = 2048  # Max input prompt tokens per interaction
-RESPONSE_LIMIT = 4096  # Max output tokens generated per interaction
 MODEL_MAX_SEQ_LEN = 1 * 32768
+# Configuration constants for LLM model behavior and server operation
+INSTRUCTION_LIMIT = 2048
+CHAT_CONTEXT_LIMIT = MODEL_MAX_SEQ_LEN - INSTRUCTION_LIMIT
+PROMPT_LIMIT = 1024
+RESPONSE_LIMIT = 8192
 
-MODEL_DIR = "/home/ksolomon/git/quant"  # Path to quantized model directory
+WORKING_DIR = "/home/ksolomon/git/karllm/karllm-server/"
+
+MODEL_DIR = "/home/ksolomon/git/models/"  # Path to quantized model directory
+ACTIVE_MODEL_FILE = WORKING_DIR + "active_model.json"
 SAFETENSORS_FILE = MODEL_DIR + "/model.safetensors"  # Path to main model weights
 SESSION_CACHE_FILE = "session_cache.pt"  # Path for saving/restoring KV cache
-INTERACTION_DIR = "./users/ksolomon/sessions"  # Path for saving interaction traces
-SESSION_DIR = "/home/ksolomon/git/karllm/karllm-server/users/"  # Path for saving interaction traces
+SESSION_DIR = WORKING_DIR + "users/"  # Path for saving interaction traces
 
 CHUNK_SIZE = 4  # Streaming chunk size (tokens per SSE flush)
 
@@ -22,7 +24,7 @@ GPU_SPLIT = "auto"  # Auto-assign memory split across devices
 
 SAVE_INTERACTION = False
 
-SERVER_TIMEOUT_MINUTES = 30
+SERVER_TIMEOUT_MINUTES = 300
 
 # Model Parameters
 CACHE_QUANTIZATION = ExLlamaV2Cache_Q8

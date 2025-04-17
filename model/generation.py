@@ -3,12 +3,13 @@ import os
 import time
 from pathlib import Path
 
-import config
 import exllamav2
 import torch
 from exllamav2 import ExLlamaV2Cache_Q8, ExLlamaV2Cache_TP
-from model.init import ModelState
 from safetensors.torch import save_file
+
+import config
+from model.init import ModelState
 
 buffer = []
 ModelState.session_id = 0
@@ -56,10 +57,13 @@ def continue_prompt(prompt: str):
     input_ids = ModelState.tokenizer.encode(
         prompt, add_bos=not ModelState.session_active, add_eos=True
     )
+    token_count = 0
+    start_time = time.perf_counter()
     ModelState.generator._gen_feed_tokens(input_ids, ModelState.settings)
     while True:
         result = ModelState.generator.stream_ex()
         chunk_ids = result.get("chunk_token_ids", None)
+        token_count += chunk_ids.numel()
 
         eos = result.get("eos", False)
         if chunk_ids is not None and chunk_ids.numel() > 0:
@@ -89,7 +93,9 @@ def continue_prompt(prompt: str):
         final_decoded = ModelState.tokenizer.decode(torch.tensor(buffer).unsqueeze(0))
         buffer.clear()
         yield f"data:{json.dumps({'text': final_decoded})}\n\n"
+    duration = time.perf_counter() - start_time
     yield f"data:{json.dumps({'text': '[DONE]'})}\n\n"
+    print(f"⏱️ {token_count} tokens @ {token_count/duration:.2f} tokens/s.")
 
     if ModelState.save_interactions:
         # Save interaction snapshot
