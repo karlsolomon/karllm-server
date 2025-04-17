@@ -1,11 +1,1 @@
-[
-  {
-    "nameOfModel": "Qwen-Coder-32B-Q8",
-    "pathToModel": "/home/ksolomon/git/models/Qwen2.5-Coder-32B-Instruct-Q8/",
-    "quantization": 4,
-    "max_seq_len": 62880,
-    "prompt_limit": 8196,
-    "response_limit": 8196
-  }
-]
-
+{"name": "QwQ-32B-Q4", "path": "/home/ksolomon/git/models//QwQ-32B-Q4", "quant": 16, "max_seq_len": 58368, "prompt_limit": 16384, "response_limit": 8192}

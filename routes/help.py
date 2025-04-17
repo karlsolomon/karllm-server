@@ -67,6 +67,21 @@ HELP_METADATA = [
         "description": "Rename a saved conversation session",
     },
     {
+        "path": "/model/list",
+        "method": "GET",
+        "description": "Get list of supported models.",
+    },
+    {
+        "path": "/model/get",
+        "method": "GET",
+        "description": "Get currently active model.",
+    },
+    {
+        "path": "/model/set/{name}",
+        "method": "POST",
+        "description": "Change running LLM to specified model.",
+    },
+    {
         "path": "/help",
         "method": "GET",
         "description": "Show a table of available API endpoints",

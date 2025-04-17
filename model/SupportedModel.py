@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from typing import Union
 
-import config
 from exllamav2 import (
     ExLlamaV2Cache,
     ExLlamaV2Cache_Q4,
@@ -11,15 +10,17 @@ from exllamav2 import (
     ExLlamaV2Cache_Q8,
 )
 
+import config
+
 KB = 1024
 
 
 class SupportedModel:
     def __init__(
         self,
-        nameOfModel: str,
-        pathToModel: str,
-        quantization: int,
+        name: str,
+        path: str,
+        quant: int,
         max_seq_len: int,
         prompt_limit: int,
         response_limit: int,
@@ -27,9 +28,9 @@ class SupportedModel:
             128 * KB
         ),  # Debugging purposes: max_seq_len < max_context_theory
     ):
-        self.name = nameOfModel
-        self.path = pathToModel
-        self.quant = quantization
+        self.name = name
+        self.path = path
+        self.quant = quant
         self.max_seq_len = max_seq_len
         self.prompt_limit = prompt_limit
         self.response_limit = response_limit
@@ -45,7 +46,7 @@ class SupportedModel:
         return {
             "name": self.name,
             "path": str(self.path),
-            "quantization": self.quant,
+            "quant": self.quant,
             "max_seq_len": self.max_seq_len,
             "prompt_limit": self.prompt_limit,
             "response_limit": self.response_limit,
@@ -75,48 +76,48 @@ class SupportedModel:
 
 
 SUPPORTED_MODELS = [
-    SupportedModel(
-        "gemma3-27b-Q6",  # TODO: quantize and test
-        config.MODEL_DIR + "/gemma-3-27b-it-Q6",
-        8,
-        48 * KB,
-        40 * KB,
-        8 * KB,
-    ),
-    SupportedModel(
-        "gemma3-27b-Q4",  # TODO: quantize and test
-        config.MODEL_DIR + "/gemma-3-27b-it-Q4",
-        4,
-        64 * KB,
-        32 * KB,
-        8 * KB,
-    ),
+    # SupportedModel(
+    #     "gemma3-27b-Q6",  # TODO: quantize and test
+    #     config.MODEL_DIR + "/gemma-3-27b-it-Q6",
+    #     8,
+    #     48 * KB,
+    #     40 * KB,
+    #     8 * KB,
+    # ),
+    # SupportedModel(
+    #     "gemma3-27b-Q4",  # TODO: quantize and test
+    #     config.MODEL_DIR + "/gemma-3-27b-it-Q4",
+    #     4,
+    #     64 * KB,
+    #     32 * KB,
+    #     8 * KB,
+    # ),
     SupportedModel(
         "Qwen-72b-Q4",  # APPROVED
         config.MODEL_DIR + "/Qwen2.5-72B-Instruct-Q4",
-        4,
-        24 * KB,
-        2 * KB,
-        8 * KB,
+        16,
+        20 * KB,
+        4 * KB,
+        4 * KB,
     ),
     SupportedModel(
         "Qwen-Coder-32B-Q4",  # APPROVED
         config.MODEL_DIR + "/Qwen2.5-Coder-32B-Instruct-Q4",
-        4,
-        120 * KB,
+        16,
+        100 * KB,
         8 * KB,
         8 * KB,
     ),
+    # SupportedModel(
+    #     "Qwen-Coder-32B-Q8",  # TODO: quantize and test
+    #     config.MODEL_DIR + "/Qwen2.5-Coder-32B-Instruct-Q8",
+    #     8,
+    #     24 * KB,
+    #     16 * KB,
+    #     8 * KB,
+    # ),
     SupportedModel(
-        "Qwen-Coder-32B-Q8",  # TODO: quantize and test
-        config.MODEL_DIR + "/Qwen2.5-Coder-32B-Instruct-Q8",
-        8,
-        24 * KB,
-        16 * KB,
-        8 * KB,
-    ),
-    SupportedModel(
-        "Qwen-Coder-14B",  # APPROVED
+        "Qwen-Coder-14B",  # CHECK_CACHE
         config.MODEL_DIR + "/Qwen2.5-Coder-14B-Instruct",
         16,
         128 * KB,
@@ -124,27 +125,27 @@ SUPPORTED_MODELS = [
         8 * KB,
     ),
     SupportedModel(
-        "Qwen-Coder-14B-Q8",  # APPROVED
+        "Qwen-Coder-14B-Q8",  # CHECK_CACHE
         config.MODEL_DIR + "/Qwen2.5-Coder-14B-Instruct-Q8",
-        8,
+        16,
         128 * KB,
         8 * KB,
         8 * KB,
     ),
     SupportedModel(
-        "QwQ-32B-Q4",  # APPROVED
+        "QwQ-32B-Q4",  # CHECK_CACHE
         config.MODEL_DIR + "/QwQ-32B-Q4",
-        4,
+        16,
         57 * KB,
         16 * KB,
         8 * KB,
     ),
     SupportedModel(
-        "QwQ-32B-Q8",  # APPROVED
+        "QwQ-32B-Q8",  # CHECK_CACHE
         config.MODEL_DIR + "/QwQ-32B-Q8",
-        8,
+        16,
         16 * KB,
-        8 * KB,
+        4 * KB,
         8 * KB,
     ),
 ]
@@ -160,4 +161,4 @@ def get_active_model() -> SupportedModel | None:
         return None
     with open(config.ACTIVE_MODEL_FILE, "r") as f:
         data = json.load(f)
-        return SupportedModel(**data[0])
+        return SupportedModel(**data)

@@ -1,13 +1,19 @@
 import shutil
+import subprocess
 from pathlib import Path
 
+from auth import require_session
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from auth import require_session
 from model.generation import start_stream
 from model.init import ModelState, load_session_into_cache
-from model.SupportedModel import SUPPORTED_MODELS, SupportedModel, get_model_by_name
+from model.SupportedModel import (
+    SUPPORTED_MODELS,
+    SupportedModel,
+    get_active_model,
+    get_model_by_name,
+)
 
 router = APIRouter(prefix="/model")
 
@@ -31,6 +37,8 @@ async def load_model(name: str, session=Depends(require_session)):
         )
     model.set_model()
     # TODO: Reload the server & add error handling
+    print("reloading model")
+    subprocess.run(["pkill", "-f", "python server.py"])
     return JSONResponse(
         content={"message": f"Model '{name}' loaded. Server will restart now..."}
     )
@@ -38,7 +46,7 @@ async def load_model(name: str, session=Depends(require_session)):
 
 @router.get("/get")
 async def get_model(session=Depends(require_session)):
-    model = SupportedModel.get_active_model()
+    model = get_active_model()
     if model is None:
         return JSONResponse(
             status_code=407,
