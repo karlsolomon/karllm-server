@@ -5,6 +5,7 @@ import config
 from auth import ACTIVE_SESSIONS, require_session, verify_jwt_and_create_session
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+
 from model.generation import start_stream
 from model.init import ModelState
 
@@ -61,6 +62,7 @@ async def keepalive(session=Depends(require_session)):
 
 @router.post("/clear")
 async def clear(session=Depends(require_session)):
+    # TODO:
     start_stream()
     return JSONResponse(content={"message": "Context cleared."})
 

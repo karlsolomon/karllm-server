@@ -1,1 +1,1 @@
-{"name": "QwQ-32B-Q4", "path": "/home/ksolomon/git/models//QwQ-32B-Q4", "quant": 16, "max_seq_len": 58368, "prompt_limit": 16384, "response_limit": 8192}
+{"name": "Qwen-72b-Q4", "path": "/home/ksolomon/git/models//Qwen2.5-72B-Instruct-Q4", "quant": 16, "max_seq_len": 8480, "prompt_limit": 2096, "response_limit": 4096}

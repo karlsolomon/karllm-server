@@ -2,12 +2,12 @@ import json
 import os
 from pathlib import Path
 
+import config
 import exllamav2
 import torch
 from exllamav2.model_init import init as model_init
 from safetensors.torch import load_file
 
-import config
 import model.SupportedModel as sm
 
 
@@ -53,21 +53,18 @@ def load_session_into_cache(session_dir: str):
             continue  # Not an interaction file
 
         prompt_ids = data["prompt_ids"]
-        # response_ids = data["response_ids"]
+        response_ids = data["response_ids"]
 
-        # prompt_ids = data["prompt_ids"]
-        # if prompt_ids.ndim == 1:
-        #     prompt_ids = prompt_ids.unsqueeze(0)
-        #
-        # response_ids = data["response_ids"]
-        # if response_ids.ndim == 1:
-        #     response_ids = response_ids.unsqueeze(0)
-        #
+        prompt_ids = data["prompt_ids"]
+        if prompt_ids.ndim == 1:
+            prompt_ids = prompt_ids.unsqueeze(0)
+        response_ids = data["response_ids"]
+        if response_ids.ndim == 1:
+            response_ids = response_ids.unsqueeze(0)
         # Rebuild token stream (prompt + response)
-        # full_ids = torch.cat([prompt_ids, response_ids], dim=-1)
-        # if full_ids.ndim == 1:
-        #     full_ids = full_ids.unsqueeze(0)  # [1, seq_len]
-
+        full_ids = torch.cat([prompt_ids, response_ids], dim=-1)
+        if full_ids.ndim == 1:
+            full_ids = full_ids.unsqueeze(0)  # [1, seq_len]
         # Pre-fill cache with prompt + response to reach final state
         ModelState.model.forward(
             input_ids=prompt_ids, cache=ModelState.cache, preprocess_only=True

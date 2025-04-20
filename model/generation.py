@@ -3,12 +3,12 @@ import os
 import time
 from pathlib import Path
 
+import config
 import exllamav2
 import torch
 from exllamav2 import ExLlamaV2Cache_Q8, ExLlamaV2Cache_TP
 from safetensors.torch import save_file
 
-import config
 from model.init import ModelState
 
 buffer = []
@@ -16,8 +16,8 @@ ModelState.session_id = 0
 
 
 def start_stream():
-    # ModelState.cache.reset() # TODO: investigate why this causes model to talk to itself.
-    # ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+    ModelState.cache.reset()  # TODO: investigate why this causes model to talk to itself.
+    ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
     ModelState.generator.begin_stream_ex(ModelState.session_ids, ModelState.settings)
     ModelState.session_active = True
 
