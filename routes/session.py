@@ -68,7 +68,7 @@ async def keepalive(session=Depends(require_session)):
 
 
 @router.post("/clear")
-async def clear(session=Depends(require_session)):
+async def clear():
     # TODO:
     start_stream()
     return JSONResponse(content={"message": "Context cleared."})

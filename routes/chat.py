@@ -11,11 +11,9 @@ router = APIRouter(prefix="/chat")
 
 
 @router.post("/stream")
-async def stream_chat(request: ChatRequest):
-    print(request)
-    print(request.prompt[0].content)
+async def stream_chat(req: ChatRequest):
     return StreamingResponse(
-        continue_prompt(request.prompt[0].content), media_type="text/event-stream"
+        continue_prompt(req.prompt), media_type="text/event-stream"
     )
 
 
