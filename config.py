@@ -15,7 +15,7 @@ SAFETENSORS_FILE = MODEL_DIR + "/model.safetensors"  # Path to main model weight
 SESSION_CACHE_FILE = "session_cache.pt"  # Path for saving/restoring KV cache
 SESSION_DIR = WORKING_DIR + "users/"  # Path for saving interaction traces
 
-CHUNK_SIZE = 4  # Streaming chunk size (tokens per SSE flush)
+CHUNK_SIZE = 8  # Streaming chunk size (tokens per SSE flush)
 
 TENSOR_PARALLEL = True  # Enable multi-GPU model sharding
 NO_GRAPHS = False
@@ -33,4 +33,5 @@ TOP_K = 50
 TOP_P = 0.95
 TOKEN_REPETITION_PENALTY = 1.1
 EOS_TOKEN_ID = 151645
-EOS_TOKEN_ID_BACKUP = 151643
+EOS_TOKEN_ID = 26525
+BOS_TOKEN_ID = 151643

@@ -1,52 +1,36 @@
+import json
+import os
+import time
 from pathlib import Path
 
-from auth import require_session
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+import config
+import torch
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from schema import ChatRequest
+from safetensors.torch import save_file
 
-from model.generation import continue_prompt, encode_file
+from model.init import ModelState
+from model.generation import generate_stream, snapshot_interaction, format_stream_chunk
 
 router = APIRouter(prefix="/chat")
 
 
 @router.post("/stream")
-async def stream_chat(req: ChatRequest):
-    return StreamingResponse(
-        continue_prompt(req.prompt), media_type="text/event-stream"
-    )
+async def stream_chat(request: Request):
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
 
+    if not prompt:
+        return StreamingResponse(
+            content=(
+                f"data:{json.dumps({'text': '[Error: empty prompt]'})}\n\n" for _ in range(1)),
+            media_type="text/event-stream",
+        )
 
-@router.post("/upload")
-async def upload_file(
-    session=Depends(require_session),
-    file: UploadFile = File(...),
-    newfilename: str = Form(None),
-):
-    username = session["username"]
-    user_dir = Path(f"/home/ksolomon/git/karllm/karllm-server/users/{username}/files")
-    user_dir.mkdir(parents=True, exist_ok=True)
+    ModelState.session_ids = torch.empty((1, 0), dtype=torch.long)
+    ModelState.generator.begin_stream_ex(
+        ModelState.session_ids, ModelState.settings)
+    ModelState.session_active = True
 
-    target_name = newfilename or file.filename
-    target_path = user_dir / target_name
-
-    with open(target_path, "wb") as f:
-        f.write(await file.read())
-
-    return {"message": f"File uploaded as {target_name}"}
-
-
-@router.post("/read")
-async def read_file(data: dict, session=Depends(require_session)):
-    filename = data.get("filename")
-    username = session["username"]
-
-    file_path = Path(
-        f"/home/ksolomon/git/karllm/karllm-server/users/{username}/files/{filename}"
-    )
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found.")
-
-    injected_tokens = encode_file(file_path)
-
-    return {"message": f"Injected {injected_tokens} tokens into context window."}
+    return StreamingResponse(generate_stream(
+        prompt), media_type="text/event-stream")
