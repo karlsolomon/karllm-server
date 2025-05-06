@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from auth import require_session
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from model.generation import start_stream
@@ -18,8 +18,8 @@ from model.SupportedModel import (
 router = APIRouter(prefix="/model")
 
 
-@router.get("/list")
-async def list_supported_models(session=Depends(require_session)):
+@router.get("/models")
+async def list_supported_models():
     return JSONResponse(
         content={
             "supported_models": str(SupportedModel.get_supported_models()),
@@ -27,25 +27,22 @@ async def list_supported_models(session=Depends(require_session)):
     )
 
 
-@router.post("/set/{name}")
-async def load_model(name: str, session=Depends(require_session)):
-    model = get_model_by_name(name)
-    if model is None:
-        return JSONResponse(
-            status_code=406,
-            content={"message": f"Model '{name}' not supported."},
-        )
+@router.post("/set")
+async def load_model(request: Request):
+    data = await request.json()
+    modelName = data.get("model")
+    model = get_model_by_name(modelName)
     model.set_model()
     # TODO: Reload the server & add error handling
     print("reloading model")
     subprocess.run(["pkill", "-f", "python server.py"])
     return JSONResponse(
-        content={"message": f"Model '{name}' loaded. Server will restart now..."}
+        content={"message": f"Model '{modelName}' loaded. Server will restart now..."}
     )
 
 
 @router.get("/get")
-async def get_model(session=Depends(require_session)):
+async def get_model():
     model = get_active_model()
     if model is None:
         return JSONResponse(

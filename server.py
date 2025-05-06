@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 import model
 from routes.chat import router as chat_router
@@ -14,6 +15,13 @@ app.include_router(session_router)
 app.include_router(convo_router)
 app.include_router(help_router)
 app.include_router(model_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -22,4 +30,10 @@ async def startup_event():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="10.224.174.3", port=34199, log_level="info")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=34199,
+        # port=5173,
+        log_level="info",
+    )

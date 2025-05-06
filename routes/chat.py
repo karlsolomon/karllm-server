@@ -3,16 +3,19 @@ from pathlib import Path
 from auth import require_session
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from model.generation import continue_prompt, encode_file
 from schema import ChatRequest
 
-router = APIRouter()
+from model.generation import continue_prompt, encode_file
+
+router = APIRouter(prefix="/chat")
 
 
 @router.post("/stream")
-async def stream_chat(request: ChatRequest, session=Depends(require_session)):
+async def stream_chat(request: ChatRequest):
+    print(request)
+    print(request.prompt[0].content)
     return StreamingResponse(
-        continue_prompt(request.prompt), media_type="text/event-stream"
+        continue_prompt(request.prompt[0].content), media_type="text/event-stream"
     )
 
 
